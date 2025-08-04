@@ -1,97 +1,73 @@
-from peacecraft.engine.trust import analyze_sentiment, adjust_trust_level
-from peacecraft.engine.npc import get_npc_response
-from peacecraft.engine.scenario import generate_scenario
-from peacecraft.engine.dialogue import summarize_dialogue
-from peacecraft.engine.session import (
-    create_new_session,
-    load_game_state,
-    save_game_state,
-    reset_session,
-)
-from peacecraft.config import TRUST_WIN_THRESHOLD, TRUST_LOSS_THRESHOLD, MAX_LEVEL
+import uuid
+import argparse
 
-import random
+from scenario import generate_scenario
+from trust import adjust_trust_level
+from npc import get_npc_response
+from database import log_conversation_chunk
+from config import DEFAULT_TRUST, MAX_HISTORY_ITEMS
+from summarization import summarize_conversation 
 
 
-def play_level(state: dict) -> str:
-    """Run a single level of the game, return result: 'win', 'loss', or 'quit'"""
-    print(f"\n🎭 NPC Personality: {state['npc_personality']}")
-    print(f"\n📖 Scenario:\n{state['scenario']}")
-    print(f"\n💙 Starting Trust Level: {state['trust_level']}")
+def run_game_loop(level):
+    session_id = str(uuid.uuid4())
+    npc_by_level = {
+        1: "aggressor",
+        2: "manipulator",
+        3: "emotional",
+        4: "warmonger"
+    }
+    npc_type = npc_by_level.get(level, "neutral")
 
-    while True:
-        player_input = input("\n🗨️ Your response: ").strip()
-        if player_input.lower() in ("exit", "quit"):
-            return "quit"
+    scenario = generate_scenario(level)
+    trust = DEFAULT_TRUST
+    conversation_history = []
 
-        sentiment = analyze_sentiment(player_input)
-        state["trust_level"] = adjust_trust_level(
-            state["trust_level"], sentiment, state["npc_personality"]
-        )
-
-        npc_reply = get_npc_response(
-            state["session_id"],
-            state["npc_personality"],
-            state["scenario"],
-            player_input,
-        )
-
-        state["conversation"].append({"role": "player", "text": player_input})
-        state["conversation"].append({"role": "npc", "text": npc_reply})
-
-        print(f"\n🤖 NPC: {npc_reply}")
-        print(f"💙 Trust Level: {state['trust_level']}")
-
-        if state["trust_level"] >= TRUST_WIN_THRESHOLD:
-            print("\n✅ You peacefully resolved the conflict!")
-            return "win"
-        elif state["trust_level"] <= TRUST_LOSS_THRESHOLD:
-            print("\n❌ The conflict escalated beyond control.")
-            return "loss"
-
-
-def main():
     print("\n" + "━" * 60)
     print("        🌍 WELCOME TO PEACECRAFT 🌍")
     print("━" * 60)
     print("Negotiate your way through escalating levels of conflict.")
     print("Type 'exit' anytime to quit.\n")
+    print(f"🎭 NPC Personality: {npc_type}\n")
+    print("📖 Scenario:")
+    print(scenario)
+    print(f"\n💙 Starting Trust Level: {trust}\n")
 
-    state = create_new_session()
-    level = state["level"]
-
-    while level <= MAX_LEVEL:
-        state["npc_personality"] = random.choice(
-            ["aggressive", "skeptical", "emotional", "manipulative", "stubborn"]
-        )
-
-        state["scenario"] = generate_scenario(level, story_summary=state["summary"])
-        state["trust_level"] = 50
-        state["conversation"] = []
-
-        save_game_state(state)
-
-        result = play_level(state)
-
-        if result == "win":
-            state["summary"] = summarize_dialogue(state["conversation"])
-            level += 1
-            state["level"] = level
-            print(f"\n📘 Updated Summary:\n{state['summary']}")
-            save_game_state(state)
-        elif result == "loss":
-            reset_session(state["session_id"])
-            print("\n🔄 Restarting from Level 1...")
-            state = create_new_session()
-            level = 1
-        elif result == "quit":
-            print("\n👋 Game ended. See you next time!")
+    while True:
+        player_input = input("🗨️ Your response: ")
+        if player_input.lower() in ["exit", "quit"]:
+            print("\n👋 Exiting Peacecraft. Until next time!")
             break
 
-    if level > MAX_LEVEL:
-        print("\n🎉 You completed all levels of Peacecraft! 🕊️")
-        reset_session(state["session_id"])
+        conversation_history.append({"role": "player", "text": player_input})
+
+        npc_reply = get_npc_response(
+            npc_type=npc_type,
+            scenario=scenario,
+            player_input=player_input,
+            conversation_history=conversation_history
+        )
+
+        print(f"\n🤖 NPC: {npc_reply}")
+        conversation_history.append({"role": "npc", "text": npc_reply})
+
+        trust = adjust_trust_level(trust, npc_reply)
+        print(f"💙 Trust Level: {trust}\n")
+
+        # RAG logging
+        summary = summarize_conversation(conversation_history[-MAX_HISTORY_ITEMS:])
+
+        log_conversation_chunk(
+            session_id=session_id,
+            npc_type=npc_type,
+            conversation=conversation_history[-MAX_HISTORY_ITEMS:],
+            summary=summary
+        )
+        print(f"🧠 Memory Saved for RAG: {summary}\n")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Start Peacecraft with a given level.")
+    parser.add_argument("--level", type=int, default=1, help="Conflict level (1-4)")
+    args = parser.parse_args()
+    run_game_loop(args.level)

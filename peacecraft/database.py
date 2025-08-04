@@ -1,21 +1,25 @@
+# database.py
 from pymongo import MongoClient
-from peacecraft.config import MONGO_URI, DB_NAME, COLLECTION_NAME
+from config import MONGO_URI, DB_NAME, COLLECTION_NAME, DIALOGUE_COLLECTION
 
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 sessions = db[COLLECTION_NAME]
+dialogue_collection = db[DIALOGUE_COLLECTION]
 
-
-def save_session(session_id: str, data: dict) -> None:
-    """Save or update a game session."""
+def save_session(session_id, data):
     sessions.update_one({"session_id": session_id}, {"$set": data}, upsert=True)
 
+def log_conversation_chunk(session_id, npc_type, conversation, summary):
+    dialogue_collection.insert_one({
+        "session_id": session_id,
+        "npc_type": npc_type,
+        "conversation": conversation,
+        "summary": summary,
+    })
 
-def load_session(session_id: str) -> dict | None:
-    """Load an existing game session."""
-    return sessions.find_one({"session_id": session_id})
-
-
-def delete_session(session_id: str) -> None:
-    """Delete a saved game session."""
-    sessions.delete_one({"session_id": session_id})
+def find_similar_conversations(session_id, npc_type, limit=5):
+    return list(dialogue_collection.find({
+        "npc_type": npc_type,
+        "session_id": {"$ne": session_id}
+    }).sort("_id", -1).limit(limit))

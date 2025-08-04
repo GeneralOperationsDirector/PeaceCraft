@@ -1,0 +1,16 @@
+import os
+
+# MongoDB
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+DB_NAME = "peacecraft"
+COLLECTION_NAME = "game_sessions"
+
+# Ollama
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral")
+
+# Game Settings
+DEFAULT_TRUST = 50
+TRUST_WIN_THRESHOLD = 70
+TRUST_LOSS_THRESHOLD = 25
+MAX_LEVEL = 4

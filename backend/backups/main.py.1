@@ -1,0 +1,54 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import ollama
+from typing import Dict
+
+app = FastAPI()
+
+# Placeholder for game state (can be expanded to use a database)
+game_state: Dict[str, Dict] = {}
+
+class PlayerInput(BaseModel):
+    session_id: str
+    player_response: str
+
+@app.post("/game/start")
+def start_game(session_id: str):
+    """Initialize a new conflict scenario."""
+    game_state[session_id] = {
+        "npc_personality": "Aggressor",
+        "trust_level": 50,
+        "conflict_scenario": "A person cuts in line at a store. How does the player handle it?"
+    }
+    return {"message": "Game started", "scenario": game_state[session_id]["conflict_scenario"]}
+
+@app.post("/game/respond")
+def process_response(player_input: PlayerInput):
+    """Process player response and generate NPC reaction."""
+    session = game_state.get(player_input.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Generate AI response using Ollama
+    ai_prompt = f"Player response: {player_input.player_response}. NPC is an aggressor with trust level {session['trust_level']}. Respond accordingly."
+    ai_response = ollama.chat(model="llama2", messages=[{"role": "system", "content": ai_prompt}])
+    
+    # Update trust level (simple logic, can be expanded)
+    if "apologize" in player_input.player_response.lower():
+        session["trust_level"] += 10
+    elif "angry" in player_input.player_response.lower():
+        session["trust_level"] -= 10
+    
+    return {"npc_response": ai_response["message"], "trust_level": session["trust_level"]}
+
+@app.get("/game/state")
+def get_game_state(session_id: str):
+    """Retrieve the current game state."""
+    session = game_state.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

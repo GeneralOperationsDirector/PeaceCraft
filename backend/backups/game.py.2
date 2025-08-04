@@ -1,0 +1,59 @@
+import requests
+import uuid
+import json
+
+def start_game():
+    session_id = str(uuid.uuid4())
+    level = 1  # Start from level 1
+    
+    while level <= 4:
+        print(f"\nStarting Level {level}...\n")
+        response = requests.post(
+            "http://localhost:8001/game/start",
+            json={"session_id": session_id, "level": level},
+            headers={"Content-Type": "application/json"}
+        )
+
+        if response.status_code == 200:
+            game_data = response.json()
+            print(f"\nScenario: {game_data['scenario']}")
+            game_status = play_game(session_id)
+
+            if game_status == "win":
+                level += 1  # Move to the next level
+            else:
+                print("Game over. Restarting from Level 1...")
+                level = 1
+        else:
+            print("Error starting game.")
+            break
+
+def play_game(session_id):
+    while True:
+        player_input = input("\nYour response: ")
+        if player_input.lower() in ["exit", "conflict resolved", "end"]:
+            print("Conflict resolved. Ending game...")
+            return "win"
+        
+        response = requests.post(
+            "http://localhost:8001/game/respond",
+            json={"session_id": session_id, "player_response": player_input},
+            headers={"Content-Type": "application/json"}
+        )
+        
+        if response.status_code == 200:
+            game_state = response.json()
+            print(f"\nNPC: {game_state['npc_response']}")
+            print(f"Trust Level: {game_state['trust_level']}")
+
+            if game_state["game_status"] == "win":
+                print("\n✅ Congratulations! You resolved the conflict peacefully.\n")
+                return "win"
+            elif game_state["game_status"] == "loss":
+                print("\n❌ Game over. The conflict escalated.\n")
+                return "loss"
+        else:
+            print("Error processing response.")
+
+if __name__ == "__main__":
+    start_game()

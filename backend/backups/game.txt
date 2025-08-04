@@ -1,0 +1,4 @@
+To start the command line game, run
+
+python game.py
+

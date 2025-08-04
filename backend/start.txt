@@ -1,0 +1,16 @@
+CLI Game
+source venv/bin/activate
+python game.py
+
+Run FastAPI Backend
+uvicorn main:app --reload --port 8001
+
+cd frontend
+# npm install axios uuid react
+npm start
+
+frontend: http://localhost:3000
+backend: http://localhost:8001
+
+
+

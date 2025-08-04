@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Peacecraft</title>
+    <script>
+        let sessionId = "";
+
+        async function startGame() {
+            const response = await fetch("/start_game", { method: "POST" });
+            const data = await response.json();
+            if (data.error) {
+                document.getElementById("error").innerText = data.error;
+            } else {
+                sessionId = data.session_id;
+                document.getElementById("scenario").innerText = data.scenario;
+                document.getElementById("error").innerText = "";
+            }
+        }
+
+        async function sendResponse() {
+            const playerResponse = document.getElementById("playerResponse").value;
+            const response = await fetch("/send_response", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ session_id: sessionId, player_response: playerResponse })
+            });
+            const data = await response.json();
+            if (data.error) {
+                document.getElementById("error").innerText = data.error;
+            } else {
+                document.getElementById("npcResponse").innerText = data.npc_response;
+                document.getElementById("trustLevel").innerText = "Trust Level: " + data.trust_level;
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>Peacecraft</h1>
+    <button onclick="startGame()">Start New Game</button>
+    <p id="scenario"></p>
+    <input type="text" id="playerResponse" placeholder="Enter your response">
+    <button onclick="sendResponse()">Send Response</button>
+    <p id="npcResponse"></p>
+    <p id="trustLevel"></p>
+    <p id="error" style="color: red;"></p>
+</body>
+</html>

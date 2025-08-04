@@ -1,0 +1,125 @@
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel, Field
+import ollama
+from typing import Dict
+import logging
+from motor.motor_asyncio import AsyncIOMotorClient
+import redis
+import os
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI app
+app = FastAPI()
+
+# Environment variables for database connection
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+REDIS_URI = os.getenv("REDIS_URI", "redis://localhost:6379")
+
+db_client = AsyncIOMotorClient(MONGO_URI)
+db = db_client.peacecraft
+redis_client = redis.Redis.from_url(REDIS_URI, decode_responses=True)
+
+# Ensure index on session_id for better query performance
+db.sessions.create_index("session_id", unique=True)
+
+
+class PlayerInput(BaseModel):
+    session_id: str = Field(..., min_length=1, description="Unique session identifier")
+    player_response: str = Field(
+        ..., min_length=1, description="Player's input in the game"
+    )
+
+
+async def get_session(session_id: str):
+    """Retrieve session data from the database."""
+    session = await db.sessions.find_one({"session_id": session_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+@app.post("/game/start")
+async def start_game(session_id: str):
+    """Initialize a new conflict scenario and store it in the database."""
+    if not session_id.strip():
+        raise HTTPException(status_code=400, detail="Session ID cannot be empty")
+    try:
+        session_data = {
+            "session_id": session_id,
+            "npc_personality": "Aggressor",
+            "trust_level": 50,
+            "conflict_scenario": "A person cuts in line at a store. How does the player handle it?",
+        }
+        await db.sessions.insert_one(session_data)
+        return {
+            "message": "Game started",
+            "scenario": session_data["conflict_scenario"],
+        }
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Error initializing game session")
+
+
+@app.post("/game/respond")
+async def process_response(player_input: PlayerInput, session=Depends(get_session)):
+    """Process player response and generate NPC reaction."""
+    cache_key = f"response:{player_input.session_id}:{player_input.player_response}"
+    cached_response = redis_client.get(cache_key)
+    if cached_response:
+        logger.info("Cache hit for response")
+        return {"npc_response": cached_response, "trust_level": session["trust_level"]}
+
+    try:
+        # Generate AI response using Ollama
+        ai_prompt = f"Player response: {player_input.player_response}. NPC is an aggressor with trust level {session['trust_level']}. Respond accordingly."
+        ai_response = ollama.chat(
+            model="llama2", messages=[{"role": "system", "content": ai_prompt}]
+        )
+    except Exception as e:
+        logger.error(f"AI generation failed: {e}")
+        raise HTTPException(status_code=500, detail="Error generating AI response")
+
+    # Update trust level (simple logic, can be expanded)
+    updated_trust_level = session["trust_level"]
+    if "apologize" in player_input.player_response.lower():
+        updated_trust_level += 10
+    elif "angry" in player_input.player_response.lower():
+        updated_trust_level -= 10
+
+    try:
+        # Update database
+        await db.sessions.update_one(
+            {"session_id": player_input.session_id},
+            {"$set": {"trust_level": updated_trust_level}},
+        )
+    except Exception as e:
+        logger.error(f"Database update error: {e}")
+        raise HTTPException(status_code=500, detail="Error updating game state")
+
+    # Cache response with expiration
+    redis_client.setex(cache_key, 300, ai_response["message"])
+    return {"npc_response": ai_response["message"], "trust_level": updated_trust_level}
+
+
+@app.get("/game/state")
+async def get_game_state(session_id: str):
+    """Retrieve the current game state."""
+    if not session_id.strip():
+        raise HTTPException(status_code=400, detail="Session ID cannot be empty")
+    try:
+        session = await db.sessions.find_one({"session_id": session_id})
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return session
+    except Exception as e:
+        logger.error(f"Database retrieval error: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving game state")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8001)

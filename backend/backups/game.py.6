@@ -1,0 +1,106 @@
+import requests
+import uuid
+import json
+from textblob import TextBlob
+
+
+def analyze_sentiment(text):
+    """Analyze sentiment of a given text."""
+    analysis = TextBlob(text)
+    return (
+        analysis.sentiment.polarity
+    )  # Returns a score between -1 (negative) and 1 (positive)
+
+
+def start_game():
+    session_id = str(uuid.uuid4())
+    level = 1  # Start from level 1
+
+    while level <= 4:
+        print(f"\nStarting Level {level}...\n")
+        response = requests.post(
+            "http://localhost:8001/game/start",
+            json={"session_id": session_id, "level": level},
+            headers={"Content-Type": "application/json"},
+        )
+
+        if response.status_code == 200:
+            game_data = response.json()
+            print(f"\nScenario: {game_data['scenario']}")
+            game_status = play_game(session_id)
+
+            if game_status == "win":
+                level += 1  # Move to the next level
+                print(f"\n✅ Level {level - 1} complete! Moving to Level {level}...")
+            else:
+                print("\n❌ Game over. Restarting from Level 1...")
+                level = 1
+        else:
+            print("Error starting game.")
+            break
+
+
+def play_game(session_id):
+    total_sentiment = 0  # Track sentiment over the conversation
+    message_count = 0
+
+    while True:
+        player_input = input("\nYour response: ")
+        if player_input.lower() in ["exit", "conflict resolved", "end"]:
+            print("Conflict resolved. Ending game...")
+            final_score = total_sentiment / message_count if message_count > 0 else 0
+            print(f"\nFinal Sentiment Score: {final_score:.2f}")
+            if final_score > 0.2:
+                print("\n✅ Congratulations! You resolved the conflict peacefully.")
+                return "win"
+            elif final_score < -0.2:
+                print("\n❌ Game over. The conflict escalated.")
+                return "loss"
+            else:
+                print(
+                    "\n🤝 The conflict was neutral. Try a different approach next time!"
+                )
+                return "neutral"
+
+        sentiment_score = analyze_sentiment(player_input)
+        total_sentiment += sentiment_score
+        message_count += 1
+
+        print(
+            f"[Debug] Sentiment Score for Response: {sentiment_score:.2f}"
+        )  # Print sentiment score for each response
+        print(
+            f"[Debug] Cumulative Sentiment Score: {total_sentiment:.2f}"
+        )  # Track the running sentiment score
+
+        response = requests.post(
+            "http://localhost:8001/game/respond",
+            json={"session_id": session_id, "player_response": player_input},
+            headers={"Content-Type": "application/json"},
+        )
+
+        if response.status_code == 200:
+            game_state = response.json()
+            npc_response = game_state.get("npc_response", "[No response]")
+            trust_level = game_state.get("trust_level", 50)
+            game_status = game_state.get("game_status", "ongoing")
+
+            print(f"\nNPC: {npc_response}")
+            print(f"Trust Level: {trust_level}")
+
+            print(f"[Debug] Current Game Status: {game_status}")
+
+            if game_status == "win":
+                print("\n✅ Congratulations! You resolved the conflict peacefully.")
+                return "win"
+            elif game_status == "loss":
+                print("\n❌ Game over. The conflict escalated.")
+                return "loss"
+            else:
+                print("\nContinue the conversation...")
+        else:
+            print("Error processing response.")
+
+
+if __name__ == "__main__":
+    start_game()

@@ -51,7 +51,7 @@ def run_game_loop(level):
         print(f"\n🤖 NPC: {npc_reply}")
         conversation_history.append({"role": "npc", "text": npc_reply})
 
-        trust = adjust_trust_level(trust, npc_reply)
+        trust = adjust_trust_level(trust, player_input)
         print(f"💙 Trust Level: {trust}\n")
 
         # RAG logging

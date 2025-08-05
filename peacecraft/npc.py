@@ -21,4 +21,12 @@ Respond in character as a {npc_type}. Keep it brief and emotional if appropriate
 """
 
     response = call_ollama_model(prompt, model=OLLAMA_MODEL)
-    return response.strip()
+
+    # 🛠 Handle dict vs string safely
+    if isinstance(response, dict):
+        # Try common response fields used by Ollama chat
+        return response.get("response", response.get("message", {}).get("content", "")).strip()
+    elif isinstance(response, str):
+        return response.strip()
+    else:
+        return "[Error: Unexpected NPC response format]"

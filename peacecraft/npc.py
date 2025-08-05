@@ -1,3 +1,4 @@
+#npc.py
 from ollama import call_ollama_model
 from config import OLLAMA_MODEL, MAX_HISTORY_ITEMS
 

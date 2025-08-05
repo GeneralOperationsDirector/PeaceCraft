@@ -1,8 +1,9 @@
+#main.py
 import uuid
 import argparse
 from config import DEFAULT_TRUST, MAX_LEVEL, MAX_HISTORY_ITEMS
 from scenario import generate_scenario
-from trust import adjust_trust_level
+from trust import analyze_trust_shift
 from npc import get_npc_response
 from database import log_conversation_chunk
 from summarization import summarize_conversation
@@ -49,7 +50,7 @@ def run_game_loop(level):
         print(f"\n🤖 NPC: {npc_reply}")
         conversation_history.append({"role": "npc", "text": npc_reply})
 
-        trust = adjust_trust_level(trust, player_input, npc_reply)
+        trust = analyze_trust_shift(session_id, npc_type, trust, conversation_history)
         print(f"💙 Trust Level: {trust}\n")
 
         summary = summarize_conversation(conversation_history[-MAX_HISTORY_ITEMS:])

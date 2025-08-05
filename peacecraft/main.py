@@ -1,12 +1,11 @@
 import uuid
 import argparse
-
+from config import DEFAULT_TRUST, MAX_LEVEL, MAX_HISTORY_ITEMS
 from scenario import generate_scenario
 from trust import adjust_trust_level
 from npc import get_npc_response
 from database import log_conversation_chunk
-from config import DEFAULT_TRUST, MAX_HISTORY_ITEMS
-from summarization import summarize_conversation 
+from summarization import summarize_conversation
 
 
 def run_game_loop(level):
@@ -34,8 +33,8 @@ def run_game_loop(level):
     print(f"\n💙 Starting Trust Level: {trust}\n")
 
     while True:
-        player_input = input("🗨️ Your response: ")
-        if player_input.lower() in ["exit", "quit"]:
+        player_input = input("🗨️ Your response (type 'say:' or 'do:'): ").strip()
+        if player_input.lower() in ["exit", "quit", "say: exit", "do: exit", "say: quit", "do: quit"]:
             print("\n👋 Exiting Peacecraft. Until next time!")
             break
 
@@ -44,30 +43,30 @@ def run_game_loop(level):
         npc_reply = get_npc_response(
             npc_type=npc_type,
             scenario=scenario,
-            player_input=player_input,
-            conversation_history=conversation_history
+            player_input=player_input
         )
 
         print(f"\n🤖 NPC: {npc_reply}")
         conversation_history.append({"role": "npc", "text": npc_reply})
 
-        trust = adjust_trust_level(trust, player_input)
+        trust = adjust_trust_level(trust, player_input, npc_reply)
         print(f"💙 Trust Level: {trust}\n")
 
-        # RAG logging
         summary = summarize_conversation(conversation_history[-MAX_HISTORY_ITEMS:])
-
-        log_conversation_chunk(
-            session_id=session_id,
-            npc_type=npc_type,
-            conversation=conversation_history[-MAX_HISTORY_ITEMS:],
-            summary=summary
-        )
-        print(f"🧠 Memory Saved for RAG: {summary}\n")
+        print(f"🧠 Memory Saved for RAG:  {summary}\n")
+        log_conversation_chunk(session_id, npc_type, conversation_history[-MAX_HISTORY_ITEMS:], summary)
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Start Peacecraft with a given level.")
     parser.add_argument("--level", type=int, default=1, help="Conflict level (1-4)")
     args = parser.parse_args()
-    run_game_loop(args.level)
+
+    if args.level < 1 or args.level > MAX_LEVEL:
+        print(f"Invalid level: {args.level}. Please choose a level between 1 and {MAX_LEVEL}.")
+    else:
+        run_game_loop(args.level)
+
+
+if __name__ == "__main__":
+    main()
